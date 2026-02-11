@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Microstructure Classifier</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-primary: #0a0c0f;
+  --bg-secondary: #12151a;
+  --bg-card: #181c23;
+  --bg-hover: #1e2330;
+  --border: #2a2f3a;
+  --border-accent: #3d4455;
+  --text-primary: #e8eaed;
+  --text-secondary: #8b919e;
+  --text-dim: #555b6a;
+  --accent: #4fc3f7;
+  --accent-dim: #1a3a4a;
+  --accent-glow: rgba(79, 195, 247, 0.15);
+  --success: #66bb6a;
+  --warning: #ffa726;
+  --tag-bg: #1a2332;
+  --tag-border: #2a3a52;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Header ────────────────────────────────────── */
+.header {
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logo {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-dim);
+  padding: 0.4rem 0.75rem;
+  border: 1px solid rgba(79, 195, 247, 0.2);
+}
+
+.header h1 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.header-stats {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  display: flex;
+  gap: 1.5rem;
+}
+
+.stat-item span { color: var(--text-secondary); }
+
+/* ── Main Layout ───────────────────────────────── */
+.main {
+  display: grid;
+  grid-template-columns: 380px 1fr;
+  min-height: calc(100vh - 58px);
+}
+
+/* ── Sidebar ───────────────────────────────────── */
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.section-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 0.5rem;
+}
+
+/* Upload area */
+.upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 4px;
+  padding: 2rem 1rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  background: var(--bg-primary);
+}
+
+.upload-zone:hover, .upload-zone.dragover {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+
+.upload-zone svg {
+  width: 40px;
+  height: 40px;
+  stroke: var(--text-dim);
+  margin-bottom: 0.75rem;
+}
+
+.upload-zone:hover svg { stroke: var(--accent); }
+
+.upload-zone p {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.upload-zone .hint {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.upload-zone input { display: none; }
+
+/* Query preview */
+.query-preview {
+  display: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.query-preview.active { display: block; }
+
+.query-preview img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  display: block;
+}
+
+.query-preview-info {
+  padding: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid var(--border);
+}
+
+.query-filename {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.btn-clear {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  border-radius: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.btn-clear:hover { border-color: var(--warning); color: var(--warning); }
+
+/* Controls */
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.control-row label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.control-row select, .control-row input[type="number"] {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 0.35rem 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  border-radius: 2px;
+  width: 80px;
+}
+
+.btn-search {
+  width: 100%;
+  padding: 0.75rem;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border: none;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-search:hover { background: #81d4fa; }
+.btn-search:disabled { background: var(--border); cursor: not-allowed; color: var(--text-dim); }
+
+.btn-search.loading {
+  background: var(--accent-dim);
+  color: var(--accent);
+  pointer-events: none;
+}
+
+/* Status */
+.status {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 2px;
+  display: none;
+}
+
+.status.visible { display: block; }
+.status.info { background: var(--accent-dim); color: var(--accent); border: 1px solid rgba(79,195,247,0.2); }
+.status.error { background: #2a1515; color: #ef5350; border: 1px solid rgba(239,83,80,0.2); }
+.status.success { background: #152a18; color: var(--success); border: 1px solid rgba(102,187,106,0.2); }
+
+/* ── Results Area ──────────────────────────────── */
+.results-area {
+  padding: 1.5rem 2rem;
+  overflow-y: auto;
+}
+
+.results-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.results-header h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.results-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.empty-state svg {
+  width: 80px;
+  height: 80px;
+  stroke: var(--border);
+  margin-bottom: 1.5rem;
+}
+
+.empty-state h3 {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.empty-state p {
+  font-size: 0.85rem;
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+/* Results grid */
+.results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.result-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.result-card:hover {
+  border-color: var(--border-accent);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+}
+
+.result-card-image {
+  width: 100%;
+  aspect-ratio: 1;
+  background: var(--bg-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.result-card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.result-rank {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: rgba(10, 12, 15, 0.85);
+  color: var(--accent);
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(79, 195, 247, 0.2);
+}
+
+.result-distance {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  background: rgba(10, 12, 15, 0.85);
+  color: var(--text-dim);
+  padding: 0.2rem 0.5rem;
+}
+
+.result-card-info {
+  padding: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.result-filename {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.result-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.tag {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.6rem;
+  padding: 0.15rem 0.5rem;
+  background: var(--tag-bg);
+  border: 1px solid var(--tag-border);
+  color: var(--accent);
+  border-radius: 2px;
+}
+
+.tag.source {
+  color: var(--text-dim);
+  border-color: var(--border);
+  background: var(--bg-primary);
+}
+
+/* Loading skeleton */
+.skeleton {
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Modal for full image */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.modal-overlay.active { display: flex; }
+
+.modal-content {
+  max-width: 90vw;
+  max-height: 90vh;
+  position: relative;
+}
+
+.modal-content img {
+  max-width: 100%;
+  max-height: 85vh;
+  object-fit: contain;
+}
+
+.modal-close {
+  position: absolute;
+  top: -2rem;
+  right: 0;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.modal-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .main { grid-template-columns: 1fr; }
+  .sidebar { border-right: none; border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-left">
+    <div class="logo">μStruct</div>
+    <h1>Microstructure Classifier</h1>
+  </div>
+  <div class="header-stats" id="headerStats">
+    <div class="stat-item"><span id="statTotal">—</span> indexed</div>
+    <div class="stat-item"><span id="statModel">—</span> model</div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div>
+      <div class="section-label">Upload Micrograph</div>
+      <div class="upload-zone" id="uploadZone">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p>Drop micrograph here</p>
+        <div class="hint">PNG, JPG, BMP, TIFF</div>
+        <input type="file" id="fileInput" accept="image/*">
+      </div>
+    </div>
+
+    <div class="query-preview" id="queryPreview">
+      <div class="section-label">Query Image</div>
+      <img id="queryImage" src="" alt="Query">
+      <div class="query-preview-info">
+        <span class="query-filename" id="queryFilename"></span>
+        <button class="btn-clear" onclick="clearQuery()">Clear</button>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="section-label">Search Settings</div>
+      <div class="control-row">
+        <label>Results</label>
+        <input type="number" id="topK" value="8" min="1" max="50">
+      </div>
+      <button class="btn-search" id="searchBtn" disabled onclick="runSearch()">
+        Search Index
+      </button>
+    </div>
+
+    <div class="status" id="status"></div>
+  </div>
+
+  <!-- Results -->
+  <div class="results-area" id="resultsArea">
+    <div class="empty-state" id="emptyState">
+      <svg viewBox="0 0 24 24" fill="none" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"/>
+        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+      </svg>
+      <h3>No query yet</h3>
+      <p>Upload a micrograph image to find the most similar microstructures in the database.</p>
+    </div>
+    <div id="resultsContent" style="display:none">
+      <div class="results-header">
+        <h2>Similar Microstructures</h2>
+        <span class="results-count" id="resultsCount"></span>
+      </div>
+      <div class="results-grid" id="resultsGrid"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal-content">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <img id="modalImage" src="" alt="Full resolution">
+    <div class="modal-meta" id="modalMeta"></div>
+  </div>
+</div>
+
+<script>
+const API = '';  // Same origin
+let selectedFile = null;
+
+// ── Init ──────────────────────────────────────────
+async function loadStats() {
+  try {
+    const res = await fetch(`${API}/api/stats`);
+    if (!res.ok) throw new Error('Server not ready');
+    const data = await res.json();
+    document.getElementById('statTotal').textContent = data.index_size.toLocaleString();
+    document.getElementById('statModel').textContent = data.model;
+  } catch (e) {
+    document.getElementById('statTotal').textContent = 'offline';
+  }
+}
+loadStats();
+
+// ── Upload handling ───────────────────────────────
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+
+uploadZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadZone.classList.add('dragover');
+});
+
+uploadZone.addEventListener('dragleave', () => {
+  uploadZone.classList.remove('dragover');
+});
+
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+
+fileInput.addEventListener('change', (e) => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+function handleFile(file) {
+  selectedFile = file;
+
+  // Show preview
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    document.getElementById('queryImage').src = e.target.result;
+    document.getElementById('queryFilename').textContent = file.name;
+    document.getElementById('queryPreview').classList.add('active');
+    uploadZone.style.display = 'none';
+    document.getElementById('searchBtn').disabled = false;
+  };
+  reader.readAsDataURL(file);
+
+  // Auto-search
+  runSearch();
+}
+
+function clearQuery() {
+  selectedFile = null;
+  document.getElementById('queryPreview').classList.remove('active');
+  uploadZone.style.display = 'block';
+  document.getElementById('searchBtn').disabled = true;
+  document.getElementById('emptyState').style.display = 'flex';
+  document.getElementById('resultsContent').style.display = 'none';
+  fileInput.value = '';
+}
+
+// ── Search ────────────────────────────────────────
+async function runSearch() {
+  if (!selectedFile) return;
+
+  const btn = document.getElementById('searchBtn');
+  const topK = document.getElementById('topK').value;
+
+  btn.classList.add('loading');
+  btn.textContent = 'Searching...';
+  showStatus('Generating embedding and searching index...', 'info');
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+
+  try {
+    const res = await fetch(`${API}/api/search?top_k=${topK}`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `Server error: ${res.status}`);
+    }
+
+    const data = await res.json();
+    displayResults(data);
+    showStatus(`Found ${data.results.length} matches in index`, 'success');
+  } catch (e) {
+    showStatus(`Error: ${e.message}`, 'error');
+  } finally {
+    btn.classList.remove('loading');
+    btn.textContent = 'Search Index';
+  }
+}
+
+// ── Display results ───────────────────────────────
+function displayResults(data) {
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('resultsContent').style.display = 'block';
+  document.getElementById('resultsCount').textContent =
+    `${data.results.length} matches · L2 distance`;
+
+  const grid = document.getElementById('resultsGrid');
+  grid.innerHTML = '';
+
+  data.results.forEach((result, i) => {
+    const card = document.createElement('div');
+    card.className = 'result-card';
+    card.onclick = () => showFullImage(result);
+
+    card.innerHTML = `
+      <div class="result-card-image">
+        <div class="skeleton" style="width:100%;height:100%;position:absolute" id="skel-${i}"></div>
+        <img src="" alt="" style="opacity:0;transition:opacity 0.2s" id="img-${i}">
+        <div class="result-rank">#${result.rank}</div>
+        <div class="result-distance">d=${result.distance.toFixed(1)}</div>
+      </div>
+      <div class="result-card-info">
+        <div class="result-filename">${result.filename || 'unknown'}</div>
+        <div class="result-tags">
+          ${result.label ? `<span class="tag">${result.label}</span>` : ''}
+          ${result.source ? `<span class="tag source">${result.source}</span>` : ''}
+        </div>
+      </div>
+    `;
+
+    grid.appendChild(card);
+
+    // Load thumbnail
+    loadThumbnail(result.index, i);
+  });
+}
+
+async function loadThumbnail(idx, cardIdx) {
+  try {
+    const res = await fetch(`${API}/api/image/${idx}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const img = document.getElementById(`img-${cardIdx}`);
+    const skel = document.getElementById(`skel-${cardIdx}`);
+
+    img.src = `data:image/png;base64,${data.thumbnail}`;
+    img.onload = () => {
+      img.style.opacity = '1';
+      if (skel) skel.remove();
+    };
+  } catch (e) {
+    console.error('Failed to load thumbnail:', e);
+  }
+}
+
+// ── Modal ─────────────────────────────────────────
+async function showFullImage(result) {
+  const modal = document.getElementById('modal');
+  const img = document.getElementById('modalImage');
+  const meta = document.getElementById('modalMeta');
+
+  img.src = `${API}/api/image/${result.index}/full`;
+  meta.innerHTML = `
+    <strong>${result.filename}</strong> · ${result.label || 'unlabeled'} · ${result.source}
+    · distance: ${result.distance.toFixed(4)}
+  `;
+  modal.classList.add('active');
+}
+
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modal')) {
+    document.getElementById('modal').classList.remove('active');
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ── Status ────────────────────────────────────────
+function showStatus(msg, type) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = `status visible ${type}`;
+  if (type === 'success') {
+    setTimeout(() => el.classList.remove('visible'), 3000);
+  }
+}
+</script>
+</body>
+</html>

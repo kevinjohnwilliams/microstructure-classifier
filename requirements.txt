@@ -1,0 +1,30 @@
+# Core ML
+torch>=2.0
+torchvision>=0.15
+open-clip-torch>=2.20.0      # CLIP embeddings (optional, can use ResNet instead)
+
+# Vector search
+faiss-cpu>=1.7.4              # Use faiss-gpu if you have CUDA
+
+# Image processing
+Pillow>=10.0
+scikit-image>=0.21
+
+# Data handling
+numpy>=1.24
+pandas>=2.0
+sqlalchemy>=2.0              # For UHCS SQLite metadata
+
+# Web server (Phase 3)
+fastapi>=0.100
+uvicorn>=0.23
+python-multipart>=0.0.6      # For file uploads
+
+# Utilities
+tqdm>=4.65
+matplotlib>=3.7
+h5py>=3.9                    # For UHCS HDF5 representations
+
+# Dev
+pytest>=7.0
+jupyter>=1.0
