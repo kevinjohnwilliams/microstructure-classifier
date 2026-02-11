@@ -2,11 +2,13 @@
 FastAPI web server for microstructure image retrieval.
 
 Endpoints:
-    POST /api/search         - Upload image, get similar microstructures
-    GET  /api/image/{index}  - Serve a micrograph image by its index in the FAISS db
-    GET  /api/health         - Health check
-    GET  /api/stats          - Index statistics
-    GET  /                   - Web UI
+    POST /api/search          - Upload image, get similar microstructures
+    POST /api/search-text     - Text query (CLIP only), get matching microstructures
+    GET  /api/image/{index}   - Serve a micrograph thumbnail by index
+    GET  /api/image/{idx}/full - Serve full-resolution image
+    GET  /api/health          - Health check
+    GET  /api/stats           - Index statistics
+    GET  /                    - Web UI
 
 Usage:
     uvicorn app.server:app --reload --port 8000
@@ -20,7 +22,7 @@ from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 from PIL import Image
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -33,7 +35,7 @@ from src.index import MicrostructureIndex
 app = FastAPI(
     title="Microstructure Classifier",
     description="Upload a micrograph to find similar microstructures and identify phases.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -69,11 +71,13 @@ async def load_models():
 
 @app.get("/api/health")
 async def health():
+    has_text_search = hasattr(embedder, "embed_text") if embedder else False
     return {
         "status": "ok",
         "model": config.EMBEDDING_MODEL,
         "index_loaded": index is not None,
         "index_size": index.size if index else 0,
+        "text_search": has_text_search,
     }
 
 
@@ -82,7 +86,6 @@ async def stats():
     if not index:
         raise HTTPException(503, "Index not loaded")
 
-    # Count by source and label
     sources = {}
     labels = {}
     for meta in index.metadata:
@@ -91,11 +94,14 @@ async def stats():
         sources[src] = sources.get(src, 0) + 1
         labels[lbl] = labels.get(lbl, 0) + 1
 
+    has_text_search = hasattr(embedder, "embed_text") if embedder else False
+
     return {
         "index_size": index.size,
         "embedding_dim": index.embedding_dim,
         "metric": index.metric,
         "model": config.EMBEDDING_MODEL,
+        "text_search": has_text_search,
         "sources": sources,
         "labels": labels,
     }
@@ -112,7 +118,6 @@ async def search_by_image(
 
     contents = await file.read()
 
-    # Validate image
     try:
         img = Image.open(io.BytesIO(contents))
         img.verify()
@@ -125,12 +130,15 @@ async def search_by_image(
 
     try:
         query_embedding = embedder.embed_single(tmp_path)
-        results = index.search(query_embedding, top_k=top_k + 1)  # +1 to skip self-match
+        results = index.search(query_embedding, top_k=top_k + 1)
 
-        # Filter out exact self-match (distance ~0)
-        results = [r for r in results if r["distance"] > 0.001][:top_k]
+        # Filter out exact self-match (distance ~0 for L2, ~1.0 for cosine)
+        if config.SIMILARITY_METRIC == "cosine":
+            results = [r for r in results if r["distance"] < 0.999][:top_k]
+        else:
+            results = [r for r in results if r["distance"] > 0.001][:top_k]
 
-        # Encode query image as base64 thumbnail for response
+        # Encode query image as base64 thumbnail
         img = Image.open(io.BytesIO(contents)).convert("RGB")
         img.thumbnail((300, 300))
         buf = io.BytesIO()
@@ -140,16 +148,65 @@ async def search_by_image(
         return {
             "query": file.filename,
             "query_thumbnail": query_thumb,
+            "query_type": "image",
             "top_k": top_k,
+            "metric": config.SIMILARITY_METRIC,
             "results": results,
         }
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
 
+class TextSearchRequest(BaseModel):
+    query: str
+    top_k: int = 8
+
+
+@app.post("/api/search-text")
+async def search_by_text(request: TextSearchRequest):
+    """
+    Search microstructures by text description (CLIP only).
+    
+    Examples:
+        "pearlite with lamellar structure"
+        "coarse martensite laths"
+        "ferritic microstructure"
+        "bainite with retained austenite"
+    """
+    if not index or not embedder:
+        raise HTTPException(503, "Model or index not loaded")
+
+    if not hasattr(embedder, "embed_text"):
+        raise HTTPException(
+            400,
+            "Text search requires CLIP model. Rebuild index with: "
+            "python scripts/build_index.py --model clip"
+        )
+
+    query_text = request.query.strip()
+    if not query_text:
+        raise HTTPException(400, "Empty query")
+
+    top_k = max(1, min(request.top_k, 50))
+
+    try:
+        query_embedding = embedder.embed_text(query_text)
+        results = index.search(query_embedding, top_k=top_k)
+
+        return {
+            "query": query_text,
+            "query_type": "text",
+            "top_k": top_k,
+            "metric": config.SIMILARITY_METRIC,
+            "results": results,
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Search failed: {str(e)}")
+
+
 @app.get("/api/image/{idx}")
 async def get_image(idx: int, size: int = Query(default=300, ge=50, le=1200)):
-    """Serve a micrograph image by its index in the database."""
+    """Serve a micrograph thumbnail by its index in the database."""
     if not index:
         raise HTTPException(503, "Index not loaded")
 
@@ -162,7 +219,6 @@ async def get_image(idx: int, size: int = Query(default=300, ge=50, le=1200)):
     if not image_path.exists():
         raise HTTPException(404, f"Image file not found: {image_path}")
 
-    # Generate thumbnail for faster serving
     img = Image.open(image_path).convert("RGB")
     img.thumbnail((size, size))
 
@@ -170,7 +226,6 @@ async def get_image(idx: int, size: int = Query(default=300, ge=50, le=1200)):
     img.save(buf, format="PNG")
     buf.seek(0)
 
-    # Encode as base64 and return in JSON (simpler than file serving for thumbnails)
     b64 = base64.b64encode(buf.getvalue()).decode()
 
     return {

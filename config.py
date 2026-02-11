@@ -24,24 +24,24 @@ METADATA_PATH = EMBEDDINGS_DIR / "metadata.pkl"
 
 # ── Model Settings ───────────────────────────────────────────────────────────
 # Options: "resnet50", "clip"
-EMBEDDING_MODEL = "resnet50"
+EMBEDDING_MODEL = "clip"
 
 # ResNet settings
-RESNET_WEIGHTS = "IMAGENET1K_V2"  # torchvision pretrained weights
-EMBEDDING_DIM = 2048              # ResNet50 feature dim (before FC layer)
+RESNET_WEIGHTS = "IMAGENET1K_V2"
+EMBEDDING_DIM = 2048
 
-# CLIP settings (alternative — better zero-shot, heavier model)
+# CLIP settings
 CLIP_MODEL_NAME = "ViT-B-32"
 CLIP_PRETRAINED = "openai"
 
 # ── Image Preprocessing ─────────────────────────────────────────────────────
-IMAGE_SIZE = 224                  # Resize target for model input
-NORMALIZE_MEAN = [0.485, 0.456, 0.406]  # ImageNet defaults
+IMAGE_SIZE = 224
+NORMALIZE_MEAN = [0.485, 0.456, 0.406]
 NORMALIZE_STD = [0.229, 0.224, 0.225]
 
 # ── Retrieval Settings ───────────────────────────────────────────────────────
 DEFAULT_TOP_K = 5
-SIMILARITY_METRIC = "L2"         # "L2" or "cosine"
+SIMILARITY_METRIC = "cosine"      # "L2" or "cosine" (use cosine for CLIP)
 
 # ── Phase Classification (Phase 2) ──────────────────────────────────────────
 PHASE_CLASSES = [
@@ -54,6 +54,6 @@ PHASE_CLASSES = [
 ]
 NUM_CLASSES = len(PHASE_CLASSES)
 
-# ── Ensure directories exist ────────────────────────────────────────────────
+# ── Ensure directories exist ─────────────────────────────────────────────────
 for d in [RAW_DIR, PROCESSED_DIR, EMBEDDINGS_DIR, UHCS_DIR, AACHEN_DIR]:
     d.mkdir(parents=True, exist_ok=True)
