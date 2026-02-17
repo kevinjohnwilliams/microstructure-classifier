@@ -183,10 +183,10 @@ def load_uhcs_images(uhcs_dir: Path = None) -> list[dict]:
             from sqlalchemy import create_engine, text
             engine = create_engine(f"sqlite:///{sqlite_path}")
             with engine.connect() as conn:
-                df = pd.read_sql(text("SELECT * FROM micrographs"), conn)
+                df = pd.read_sql(text("SELECT * FROM micrograph"), conn)
                 for _, row in df.iterrows():
                     key = str(row.get("path", row.get("micrograph_id", "")))
-                    stem = Path(key).stem if "/" in str(key) else key
+                    stem = Path(key).stem
                     meta_lookup[stem] = row.to_dict()
             print(f"  Loaded UHCS metadata: {len(meta_lookup)} entries")
         except Exception as e:
@@ -207,7 +207,7 @@ def load_uhcs_images(uhcs_dir: Path = None) -> list[dict]:
                 "imaging": "optical",
                 "material": "ultrahigh carbon steel",
                 **{k: v for k, v in meta.items()
-                   if isinstance(v, (str, int, float, bool))},
+                   if isinstance(v, (str, int, float, bool)) and k != "path"},
             },
         })
 

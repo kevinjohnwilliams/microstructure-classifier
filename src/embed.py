@@ -3,7 +3,8 @@ Image embedding generation using pre-trained vision models.
 
 Supports:
 - ResNet50 (default): Fast, good features, ImageNet pre-trained
-- CLIP: Better semantic understanding, heavier model
+- CLIP: Better semantic understanding, heavier model, enables text search
+  and zero-shot phase classification
 
 The embedding is extracted from the penultimate layer (before classification head),
 giving a rich feature vector that captures visual patterns in the micrograph.
@@ -69,7 +70,6 @@ class ResNetEmbedder:
                     tensors.append(t)
                 except Exception as e:
                     print(f"Warning: Failed to load {path}: {e}")
-                    # Insert zero vector as placeholder
                     tensors.append(torch.zeros(1, 3, config.IMAGE_SIZE, config.IMAGE_SIZE))
             
             batch_tensor = torch.cat(tensors, dim=0).to(self.device)
@@ -104,6 +104,9 @@ class CLIPEmbedder:
         
         # ViT-B-32 gives 512-dim embeddings
         self.embedding_dim = 512
+
+        # Cache for zero-shot text prototypes (computed once, reused)
+        self._zeroshot_cache = {}
     
     @torch.no_grad()
     def embed_single(self, image_path: str | Path) -> np.ndarray:
@@ -113,7 +116,18 @@ class CLIPEmbedder:
         img = load_image(image_path)
         tensor = self.preprocess(img).unsqueeze(0).to(self.device)
         embedding = self.model.encode_image(tensor)
-        # L2 normalize (standard for CLIP)
+        embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+        return embedding.squeeze().cpu().numpy()
+
+    @torch.no_grad()
+    def embed_image_bytes(self, image_bytes: bytes) -> np.ndarray:
+        """Generate CLIP image embedding directly from raw bytes (no temp file)."""
+        from PIL import Image as PILImage
+        import io
+
+        img = PILImage.open(io.BytesIO(image_bytes)).convert("RGB")
+        tensor = self.preprocess(img).unsqueeze(0).to(self.device)
+        embedding = self.model.encode_image(tensor)
         embedding = embedding / embedding.norm(dim=-1, keepdim=True)
         return embedding.squeeze().cpu().numpy()
     
@@ -154,6 +168,70 @@ class CLIPEmbedder:
         embedding = self.model.encode_text(tokens)
         embedding = embedding / embedding.norm(dim=-1, keepdim=True)
         return embedding.squeeze().cpu().numpy()
+
+    @torch.no_grad()
+    def classify_zero_shot(
+        self,
+        image_embedding: np.ndarray,
+        phase_prompts: dict[str, list[str]],
+    ) -> dict[str, float]:
+        """
+        Zero-shot phase classification using CLIP text-image similarity.
+
+        For each phase, we encode multiple text descriptions (prompts) and
+        average their embeddings to create a robust text prototype. Then we
+        compute cosine similarity between the image embedding and each
+        phase prototype, and convert to probabilities via softmax.
+
+        The prompts are cached after first computation so subsequent calls
+        are fast (just a matrix multiply).
+
+        Args:
+            image_embedding: L2-normalized image embedding (512-dim)
+            phase_prompts: Dict mapping phase key -> list of text descriptions
+                e.g. {"pearlite": ["a micrograph showing pearlite ...", ...]}
+
+        Returns:
+            Dict mapping phase key -> probability (softmax-normalized)
+        """
+        cache_key = tuple(sorted(phase_prompts.keys()))
+
+        if cache_key not in self._zeroshot_cache:
+            prototypes = {}
+            for phase_key, prompts in phase_prompts.items():
+                tokens = self.tokenizer(prompts).to(self.device)
+                text_embeddings = self.model.encode_text(tokens)
+                text_embeddings = text_embeddings / text_embeddings.norm(
+                    dim=-1, keepdim=True
+                )
+                # Average all prompt embeddings into one prototype per phase
+                prototype = text_embeddings.mean(dim=0)
+                prototype = prototype / prototype.norm()
+                prototypes[phase_key] = prototype
+
+            phase_keys = list(prototypes.keys())
+            proto_matrix = torch.stack([prototypes[k] for k in phase_keys])
+            self._zeroshot_cache[cache_key] = (phase_keys, proto_matrix)
+
+        phase_keys, proto_matrix = self._zeroshot_cache[cache_key]
+
+        # Cosine similarity: image embedding dot each text prototype
+        img_tensor = torch.from_numpy(image_embedding).float().to(self.device)
+        img_tensor = img_tensor / img_tensor.norm()
+        similarities = proto_matrix @ img_tensor
+
+        # Temperature-scaled softmax
+        # Lower temperature = more peaked distribution (more confident)
+        # Higher temperature = more spread out
+        # CLIP's own logit scale is ~100, but that makes probs too peaked
+        # 20 gives reasonable spread for our number of classes
+        temperature = 20.0
+        probs = torch.softmax(similarities * temperature, dim=0)
+
+        return {
+            phase_keys[i]: float(probs[i])
+            for i in range(len(phase_keys))
+        }
 
 
 def get_embedder(model_name: str = None):
