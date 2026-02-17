@@ -35,3 +35,10 @@ notebooks/*.ipynb
 # Output files
 query_results.png
 *.log
+
+# Dataset repos (cloned, not ours to commit)
+mlography/
+nasa_microscopy/
+ti64_optical/
+microstructure_datasets/
+hf_space/
