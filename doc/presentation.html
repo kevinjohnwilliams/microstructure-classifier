@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>μStruct Architecture Explorer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0D1117; color: #E6EDF3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #0D1117; }
+  ::-webkit-scrollbar-thumb { background: #30363D; border-radius: 3px; }
+  button { font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback } = React;
+
+const sections = [
+  {
+    id: "overview",
+    title: "The Big Picture",
+    icon: "\u{1F52C}",
+    content: {
+      type: "pipeline",
+      intro: "\u03BCStruct is an open-source AI tool that identifies steel microstructural phases from uploaded micrographs. Upload an image, get a phase ID with confidence scoring, educational content, and visually similar references.",
+      steps: [
+        { label: "Upload", detail: "User uploads a micrograph (JPEG/PNG). System validates it's a real image.", color: "#8B949E" },
+        { label: "CLIP Encode", detail: "Image is resized to 224\u00D7224 and run through CLIP's Vision Transformer. Output: a 512-number vector \u2014 the image's 'fingerprint'.", color: "#4FC3F7" },
+        { label: "Dual Analysis", detail: "The fingerprint goes down TWO parallel paths: Zero-Shot (compare to text) and Voting (compare to database images).", color: "#3FB950" },
+        { label: "Ensemble", detail: "Both methods' results are combined with weighted averaging. Currently 40% zero-shot, 60% voting.", color: "#F0883E" },
+        { label: "Confidence Check", detail: "Four independent checks decide if the result is trustworthy. If not, system says 'uncertain' instead of guessing.", color: "#F85149" },
+        { label: "Report", detail: "Phase ID, confidence score, formation conditions, hardness, visual features, look-alike warnings, and reference images.", color: "#BC8CFF" },
+      ]
+    }
+  },
+  {
+    id: "clip",
+    title: "What is CLIP?",
+    icon: "\u{1F9E0}",
+    content: {
+      type: "concept",
+      blocks: [
+        {
+          title: "The Core Idea",
+          text: "CLIP (Contrastive Language-Image Pre-training) was trained by OpenAI on 400 million image-text pairs from the internet \u2014 photos with captions, alt text, descriptions. It learned to map BOTH images and text into the same 512-dimensional space.",
+          highlight: true
+        },
+        {
+          title: "Why This Matters for \u03BCStruct",
+          text: "Because images and text live in the same space, we can compare a micrograph against text descriptions like 'bright white phase at grain boundaries' and get a meaningful similarity score. CLIP doesn't know metallurgy specifically \u2014 but it knows visual-language associations well enough that expert-written prompts bridge the gap."
+        },
+        {
+          title: "The Shared Space",
+          text: "Think of it as a giant room where every image and every piece of text has a specific location. Similar things are close together. A photo of cementite and the text 'iron carbide network' end up near each other. A photo of a cat is far away from both."
+        },
+        {
+          title: "Model Specs",
+          text: "\u03BCStruct uses ViT-B/32 \u2014 the smallest CLIP variant (~88M parameters). Chosen for CPU-only deployment on Hugging Face Spaces. Larger variants (ViT-L/14 at 304M, ViT-H at 632M) are more accurate but too slow without a GPU."
+        }
+      ]
+    }
+  },
+  {
+    id: "vit",
+    title: "Vision Transformer",
+    icon: "\u{1F441}",
+    content: {
+      type: "process",
+      intro: "How CLIP converts your micrograph into a 512-number fingerprint",
+      steps: [
+        { title: "1. Resize", detail: "Your 1024\u00D7768 micrograph gets resized to 224\u00D7224 pixels and RGB-normalized. Yes, information is lost \u2014 but this is the size ViT-B/32 was trained on.", stat: "1024\u00D7768 \u2192 224\u00D7224" },
+        { title: "2. Split into Patches", detail: "The image is divided into a 7\u00D77 grid of 32\u00D732 pixel tiles. Each tile captures a small region \u2014 maybe a grain boundary, maybe texture within a grain.", stat: "7 \u00D7 7 = 49 patches" },
+        { title: "3. Patch Embedding", detail: "Each 32\u00D732 patch is flattened (32\u00D732\u00D73 = 3,072 values) and projected to a 768-dimensional vector. A special [CLS] token is prepended \u2014 this will become the image summary.", stat: "49 + 1 [CLS] = 50 tokens" },
+        { title: "4. Self-Attention (\u00D712 layers)", detail: "Every token looks at every other token and decides what's relevant. Grain boundary patches attend to other boundary patches. The [CLS] token attends to everything \u2014 it absorbs the meaning of the whole image.", stat: "12 transformer layers" },
+        { title: "5. Project & Normalize", detail: "The [CLS] token output (768-dim) is projected to 512 dimensions, then L2-normalized to unit length. This puts every image on the surface of a 512-dimensional sphere. Normalization means cosine similarity = simple dot product.", stat: "768 \u2192 512-dim, length = 1.0" }
+      ]
+    }
+  },
+  {
+    id: "zeroshot",
+    title: "Zero-Shot Classification",
+    icon: "\u{1F4DD}",
+    content: {
+      type: "comparison",
+      intro: "Compare your image against text descriptions of every phase \u2014 no training data needed",
+      left: {
+        title: "Text Prototypes (built once, cached)",
+        items: [
+          { phase: "Cementite", prompts: "\"bright white phase at grain boundaries\", \"iron carbide network\", \"proeutectoid cementite\", \"Fe\u2083C morphology\"" },
+          { phase: "Pearlite", prompts: "\"alternating dark and light lamellae\", \"eutectoid structure\", \"lamellar ferrite-cementite\"" },
+          { phase: "Ferrite", prompts: "\"equiaxed grains with smooth interior\", \"body-centered cubic iron\", \"soft proeutectoid phase\"" },
+          { phase: "Martensite", prompts: "\"dark acicular needles in lath packets\", \"diffusionless transformation product\"" },
+        ],
+        note: "~4 prompts per phase \u00D7 16 phases. Each prompt is CLIP-encoded to 512-dim, then averaged into one prototype vector per phase. Averaging captures the general concept, not just one appearance."
+      },
+      right: {
+        title: "The Math",
+        items: [
+          { step: "Dot Product", detail: "Image vector \u00D7 16 prototype vectors = 16 similarity scores. Range: roughly 0.18\u20130.30 for related content." },
+          { step: "Temperature \u00D7 20", detail: "Raw scores are bunched together (0.28 vs 0.26). Multiplying by 20 amplifies gaps: 5.6 vs 5.2." },
+          { step: "Softmax", detail: "Converts scaled scores to probabilities that sum to 1.0. Now cementite = 31%, spheroidite = 21% \u2014 a clear winner." },
+        ],
+        note: "Temperature = 20 was chosen for 16 classes. CLIP's own temperature (~100) would give 99% confidence \u2014 too aggressive for an educational tool."
+      }
+    }
+  },
+  {
+    id: "faiss",
+    title: "FAISS Similarity Search",
+    icon: "\u{1F50D}",
+    content: {
+      type: "concept",
+      blocks: [
+        { title: "What FAISS Does", text: "FAISS (Facebook AI Similarity Search) compares your image's 512-dim vector against all 1,851 stored image vectors using dot products. It returns the top-20 most similar images with their similarity scores and labels.", highlight: true },
+        { title: "Key Difference from Zero-Shot", text: "NO text is involved. FAISS compares image-to-image. It doesn't know what 'cementite' means \u2014 just that your image looks visually similar to certain stored images. Zero-shot uses language understanding; FAISS uses visual pattern matching." },
+        { title: "How It's Stored", text: "FAISS only stores vectors (a flat array of numbers). Labels, file paths, imaging type, and source dataset are in a separate Python list matched by index position. When FAISS says 'index 847 is your 3rd best match,' we look up metadata[847] for the label. If these ever get out of sync, results are meaningless." },
+        { title: "IndexFlatIP", text: "\u03BCStruct uses FAISS's simplest index type \u2014 exact exhaustive search via inner product. At 1,851 vectors this is fast enough (<1ms). FAISS supports approximate nearest neighbor algorithms (IVF, HNSW) for scaling to millions of images." }
+      ]
+    }
+  },
+  {
+    id: "voting",
+    title: "Voting Classifier",
+    icon: "\u{1F5F3}",
+    content: {
+      type: "formula",
+      intro: "Each of the top-20 FAISS results 'votes' for its phase label. But not all votes are equal.",
+      formula: "vote weight = similarity \u00D7 balance \u00D7 modality",
+      components: [
+        { name: "Similarity", color: "#4FC3F7", detail: "How close is this result to your query? Cosine similarity 0\u20131. Higher = more visually similar = stronger vote." },
+        { name: "Balance Weight", color: "#3FB950", detail: "Compensates for class imbalance. Formula: median_count / class_count. Ferrite (843 images) gets 0.28\u00D7. Martensite (36 images) gets 5.0\u00D7 (capped). Prevents overrepresented classes from winning by sheer numbers." },
+        { name: "Modality Weight", color: "#F0883E", detail: "Boosts same-modality matches. Optical query + optical result = 1.8\u00D7. Optical query + SEM result = 0.4\u00D7. Prevents SEM-heavy database from dominating optical queries. Modality detected via CLIP text prompts." }
+      ],
+      example: {
+        title: "Example: Cementite Query (top 5 results)",
+        rows: [
+          { result: "spheroidite", sim: "0.82", balance: "0.60\u00D7", mod: "1.0\u00D7", weight: "0.49" },
+          { result: "cementite", sim: "0.79", balance: "1.12\u00D7", mod: "1.0\u00D7", weight: "0.89" },
+          { result: "spheroidite", sim: "0.78", balance: "0.60\u00D7", mod: "1.0\u00D7", weight: "0.47" },
+          { result: "spheroidite", sim: "0.76", balance: "0.60\u00D7", mod: "1.0\u00D7", weight: "0.46" },
+          { result: "ferrite", sim: "0.71", balance: "0.28\u00D7", mod: "1.0\u00D7", weight: "0.20" },
+        ],
+        conclusion: "Spheroidite total: 1.42 \u2192 57%. Cementite: 0.89 \u2192 35%. Three spheroidite results outvote one cementite despite balance correction."
+      }
+    }
+  },
+  {
+    id: "ensemble",
+    title: "The Ensemble Problem",
+    icon: "\u2696",
+    content: {
+      type: "ensemble",
+      formula: "final = zero-shot \u00D7 0.4 + voting \u00D7 0.6",
+      intro: "Both methods give probabilities for each phase. The ensemble combines them with a weighted average. The problem: the weights matter enormously.",
+      scenarios: [
+        {
+          title: "Current Weights (40/60) \u2014 WRONG ANSWER",
+          weights: "Zero-shot 40% / Voting 60%",
+          rows: [
+            { phase: "Cementite", zs: "31%", vote: "35%", result: "33.4%" },
+            { phase: "Spheroidite", zs: "21%", vote: "57%", result: "42.6%", winner: true, wrong: true },
+          ],
+          note: "Voting's noisy database overrides CLIP's correct answer."
+        },
+        {
+          title: "Proposed Weights (70/30) \u2014 CORRECT",
+          weights: "Zero-shot 70% / Voting 30%",
+          rows: [
+            { phase: "Cementite", zs: "31%", vote: "35%", result: "32.2%", winner: true },
+            { phase: "Spheroidite", zs: "21%", vote: "57%", result: "31.8%" },
+          ],
+          note: "CLIP's semantic understanding wins when given proper weight."
+        }
+      ],
+      insight: "There's a deeper problem: phases with ZERO database images (bainite, tempered martensite, widmanst\u00E4tten, etc.) get 0% from voting. Their ensemble score can only be zero-shot \u00D7 0.4. They can essentially never win against phases that get contributions from both methods \u2014 even if CLIP correctly identifies them."
+    }
+  },
+  {
+    id: "confidence",
+    title: "Confidence Signals",
+    icon: "\u{1F6E1}",
+    content: {
+      type: "checks",
+      intro: "Four independent checks catch different failure modes. If any check triggers, the system says 'uncertain' and provides educational fallback content instead of a wrong answer.",
+      checks: [
+        { name: "Similarity Floor", threshold: "< 0.45", question: "Is this even a micrograph?", example: "Cat photo uploaded \u2192 best match is 0.25. Nothing in the database looks remotely like it. Rejected before ensemble even runs.", color: "#F85149" },
+        { name: "Confidence Floor", threshold: "< 18%", question: "Is the winner confident enough?", example: "With 16 phases, random guessing = 6.25% each. Below 18% means the system is barely better than flipping a coin.", color: "#F0883E" },
+        { name: "Ambiguity Gap", threshold: "< 5% gap", question: "Is the winner clearly ahead?", example: "Cementite at 22%, spheroidite at 20%. Only 2% gap \u2014 basically a coin flip. System flags: 'CLIP suggests X but database leans toward Y.'", color: "#F0C000" },
+        { name: "Entropy Ratio", threshold: "> 0.85", question: "Is the distribution peaked or flat?", example: "Top phase at 15% (passes floor) but eight others at 10-12%. Winner technically won but system isn't discriminating. Distribution is nearly uniform.", color: "#BC8CFF" }
+      ]
+    }
+  },
+  {
+    id: "data",
+    title: "The Data Reality",
+    icon: "\u{1F4CA}",
+    content: {
+      type: "data",
+      intro: "The AI architecture works. Classification accuracy is limited by reference data quality. Zero-shot CLIP is currently outperforming the voting classifier.",
+      current: {
+        title: "Current Database",
+        total: "1,851 images",
+        issues: [
+          "Only 6 of 16 phases represented",
+          "Unverified labels (Kaggle folder names)",
+          "No optical vs SEM metadata tags",
+          "Heavy class imbalance (ferrite 843 vs martensite 36)",
+          "No bainite, tempered martensite, widmanst\u00E4tten, acicular ferrite, or austenite"
+        ],
+        distribution: [
+          { phase: "Ferrite", count: 843, pct: 45.5 },
+          { phase: "Spheroidite", count: 398, pct: 21.5 },
+          { phase: "Duplex", count: 238, pct: 12.9 },
+          { phase: "Cementite", count: 212, pct: 11.5 },
+          { phase: "Pearlite", count: 124, pct: 6.7 },
+          { phase: "Martensite", count: 36, pct: 1.9 },
+        ]
+      },
+      needed: {
+        title: "What's Needed",
+        items: [
+          "Expert-verified micrograph labels",
+          "All 16 steel phases covered",
+          "200+ images per major phase",
+          "Optical & SEM tagged separately",
+          "Consistent resolution & quality",
+          "Trusted provenance (ASM, NIST, Cambridge)"
+        ]
+      },
+      why: "Why is CLIP beating the database? CLIP was trained on 400M image-text pairs including textbook figures, Wikipedia diagrams, and research papers. Its vague-but-broad metallurgical understanding is more reliable than 1,851 images with unverified Kaggle labels and massive class imbalance."
+    }
+  },
+  {
+    id: "datasets",
+    title: "Dataset Sources",
+    icon: "\u{1F4C1}",
+    content: {
+      type: "datasets",
+      intro: "\u03BCStruct's reference library is built from openly available research datasets. Proper attribution is maintained for all sources.",
+      datasets: [
+        { name: "Aachen-Heerlen", images: "~1,700 SEM", content: "Bainitic steel with M/A island annotations", source: "Figshare", license: "CC" },
+        { name: "UHCS (NIST)", images: "~960 optical", content: "Ultrahigh carbon steel \u2014 pearlite, spheroidite, network cementite, martensite, Widmanst\u00E4tten", source: "NIST", license: "Open" },
+        { name: "Kaggle Collections", images: "~840 optical", content: "Steel alloy micrographs (CPJ, HR, P92 alloys)", source: "Kaggle", license: "Various" },
+        { name: "DoITPoMS", images: "~900", content: "Diverse metals, ceramics, composites with expert descriptions", source: "Cambridge", license: "CC BY-NC-SA 4.0" },
+        { name: "Ti-6Al-4V", images: "1,225 optical", content: "Titanium alloy \u2014 lamellar, bi-modal, martensitic", source: "GitHub (RPI)", license: "MIT" },
+        { name: "MLography", images: "42 full-res", content: "Uranium-chromium alloy with expert labels", source: "GitHub (NRCN)", license: "CC BY 4.0" },
+        { name: "NASA Benchmark", images: "~100 SEM", content: "Ni-superalloy + environmental barrier coatings", source: "GitHub (NASA)", license: "MIT" },
+      ],
+      note: "Not all datasets are steel-specific. The FAISS index currently contains only steel micrographs (1,851 after filtering). Ti-6Al-4V and other non-steel sources are available but excluded from the default steel classification pipeline."
+    }
+  },
+  {
+    id: "architecture",
+    title: "Architecture Decisions",
+    icon: "\u{1F3D7}",
+    content: {
+      type: "decisions",
+      intro: "We evaluated three paths forward and chose to keep CLIP frozen while improving everything around it.",
+      options: [
+        {
+          title: "A: Keep CLIP, Fix the Data",
+          status: "chosen",
+          pros: ["No model risk \u2014 CLIP is proven", "Adding a new phase = write 4 text prompts (10 min)", "Zero-shot covers all 16 phases regardless of database", "Focus investment on what actually matters: data quality"],
+          cons: ["Limited by CLIP's general training (not metallography-specific)", "ViT-B/32 is the smallest variant"]
+        },
+        {
+          title: "B: Fine-tune CLIP",
+          status: "rejected",
+          pros: ["Could improve domain-specific accuracy", "Freeze early layers, retrain later ones"],
+          cons: ["Don't know where metallography knowledge lives in 88M parameters", "Could make things worse \u2014 hard to debug", "Need high-quality data to fine-tune WITH (chicken-and-egg)", "Months of experimentation with uncertain payoff"]
+        },
+        {
+          title: "C: Traditional CNN",
+          status: "rejected",
+          pros: ["Simpler architecture", "Well-understood training", "Lightweight \u2014 ResNet trains on a laptop"],
+          cons: ["Can ONLY predict trained phases", "Adding a phase = collect 200+ images + retrain", "No concept of 'never seen this before'", "Requires high-quality labeled data we don't have", "Loses zero-shot coverage of all 16 phases"]
+        }
+      ],
+      conclusion: "The model isn't the problem \u2014 the data around it is. CLIP is a solid engine. The path forward: optimize FAISS with confidence scoring, improve database quality, pursue ASM partnership for expert-verified data. As data quality improves, gradually shift ensemble weight back toward voting."
+    }
+  },
+  {
+    id: "phases",
+    title: "16 Steel Phases",
+    icon: "\u{1F529}",
+    content: {
+      type: "phases",
+      intro: "\u03BCStruct's Phase Guide covers 16 steel microstructural phases with educational content for each.",
+      phases: [
+        { name: "Ferrite (\u03B1-Iron)", hardness: "80\u2013150 HV", category: "Equilibrium", inDB: true },
+        { name: "Pearlite", hardness: "200\u2013350 HV", category: "Eutectoid", inDB: true },
+        { name: "Ferrite + Pearlite", hardness: "120\u2013250 HV", category: "Two-Phase", inDB: false },
+        { name: "Martensite", hardness: "400\u2013700+ HV", category: "Diffusionless", inDB: true },
+        { name: "Tempered Martensite", hardness: "300\u2013600 HV", category: "Heat-Treated", inDB: false },
+        { name: "Bainite", hardness: "300\u2013450 HV", category: "Intermediate", inDB: false },
+        { name: "Bainite + M/A Islands", hardness: "280\u2013400 HV", category: "Multi-Phase", inDB: false },
+        { name: "Austenite (Retained)", hardness: "150\u2013300 HV", category: "Stabilized", inDB: false },
+        { name: "Cementite (Fe\u2083C)", hardness: "800\u20131000 HV", category: "Carbide", inDB: true },
+        { name: "Network Cementite", hardness: "800\u20131000 HV", category: "Carbide Morph.", inDB: false },
+        { name: "Spheroidite", hardness: "150\u2013250 HV", category: "Annealed", inDB: true },
+        { name: "Widmanst\u00E4tten Ferrite", hardness: "150\u2013250 HV", category: "Transform.", inDB: false },
+        { name: "Acicular Ferrite", hardness: "200\u2013280 HV", category: "Transform.", inDB: false },
+        { name: "Duplex / Dual-Phase", hardness: "Varies", category: "Engineered", inDB: true },
+        { name: "Pearlite + Widmanst\u00E4tten", hardness: "180\u2013300 HV", category: "Mixed", inDB: false },
+        { name: "Pearlite + Spheroidite", hardness: "180\u2013280 HV", category: "Transitional", inDB: false },
+      ]
+    }
+  },
+  {
+    id: "stack",
+    title: "Tech Stack & API",
+    icon: "\u2699",
+    content: {
+      type: "stack",
+      tools: [
+        { name: "OpenCLIP ViT-B/32", role: "Vision-language embeddings", category: "AI" },
+        { name: "FAISS (IndexFlatIP)", role: "Vector similarity search", category: "AI" },
+        { name: "FastAPI", role: "Async Python backend", category: "Backend" },
+        { name: "Vanilla HTML/CSS/JS", role: "Single-page frontend", category: "Frontend" },
+        { name: "Docker", role: "Containerized deployment", category: "Deploy" },
+        { name: "Hugging Face Spaces", role: "Free CPU hosting", category: "Deploy" },
+        { name: "GitHub", role: "Open source repo", category: "Deploy" },
+      ],
+      endpoints: [
+        { method: "POST", path: "/api/identify", desc: "Upload image \u2192 diagnostic report" },
+        { method: "POST", path: "/api/search", desc: "Upload image \u2192 similar micrographs" },
+        { method: "POST", path: "/api/search-text", desc: "Text query \u2192 matching micrographs" },
+        { method: "GET", path: "/api/phases", desc: "Phase knowledge base (all 16)" },
+        { method: "GET", path: "/api/phase-guide", desc: "Phase encyclopedia + examples" },
+        { method: "GET", path: "/api/stats", desc: "Index stats & label distribution" },
+        { method: "GET", path: "/api/health", desc: "Health check" },
+      ],
+      note: "\u03BCStruct is inference-only. It does not store user uploads, modify model weights, or redistribute source images. Fully self-hostable."
+    }
+  }
+];
+
+function PipelineView({ content }) {
+  const [active, setActive] = React.useState(null);
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#E6EDF3", fontSize: 15, lineHeight: 1.6, marginBottom: 24 } }, content.intro),
+    React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 20 } },
+      content.steps.map((s, i) =>
+        React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8 } },
+          React.createElement("button", {
+            onClick: () => setActive(active === i ? null : i),
+            style: { padding: "12px 16px", background: active === i ? s.color + "22" : "#161B22", border: "1.5px solid " + (active === i ? s.color : "#30363D"), borderRadius: 10, color: active === i ? s.color : "#E6EDF3", cursor: "pointer", fontSize: 13, fontWeight: 600, minWidth: 100, textAlign: "center" }
+          },
+            React.createElement("div", { style: { fontSize: 11, color: "#8B949E", marginBottom: 2 } }, "Step " + (i + 1)),
+            s.label
+          ),
+          i < content.steps.length - 1 && React.createElement("span", { style: { color: "#30363D", fontSize: 18 } }, "\u2192")
+        )
+      )
+    ),
+    active !== null && React.createElement("div", { style: { padding: 16, background: "#161B22", borderRadius: 10, borderLeft: "3px solid " + content.steps[active].color } },
+      React.createElement("p", { style: { color: "#E6EDF3", margin: 0, fontSize: 14, lineHeight: 1.6 } }, content.steps[active].detail)
+    )
+  );
+}
+
+function ConceptView({ content }) {
+  return React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 16 } },
+    content.blocks.map((b, i) =>
+      React.createElement("div", { key: i, style: { padding: 16, background: b.highlight ? "#1A3A4A" : "#161B22", borderRadius: 10, border: b.highlight ? "1px solid #4FC3F7" : "1px solid #21262D" } },
+        React.createElement("h4", { style: { color: b.highlight ? "#4FC3F7" : "#E6EDF3", margin: "0 0 8px", fontSize: 15 } }, b.title),
+        React.createElement("p", { style: { color: "#C9D1D9", margin: 0, fontSize: 14, lineHeight: 1.6 } }, b.text)
+      )
+    )
+  );
+}
+
+function ProcessView({ content }) {
+  const [expanded, setExpanded] = React.useState(null);
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 20 } }, content.intro),
+    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+      content.steps.map((s, i) =>
+        React.createElement("button", { key: i, onClick: () => setExpanded(expanded === i ? null : i), style: { padding: 16, background: "#161B22", border: "1px solid #30363D", borderRadius: 10, cursor: "pointer", textAlign: "left" } },
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+            React.createElement("span", { style: { color: "#4FC3F7", fontSize: 15, fontWeight: 600 } }, s.title),
+            React.createElement("span", { style: { color: "#3FB950", fontSize: 12, fontFamily: "monospace", background: "#0D1117", padding: "3px 10px", borderRadius: 6 } }, s.stat)
+          ),
+          expanded === i && React.createElement("p", { style: { color: "#C9D1D9", margin: "10px 0 0", fontSize: 13, lineHeight: 1.6 } }, s.detail)
+        )
+      )
+    )
+  );
+}
+
+function ComparisonView({ content }) {
+  const [tab, setTab] = React.useState("left");
+  const data = tab === "left" ? content.left : content.right;
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 16 } }, content.intro),
+    React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
+      React.createElement("button", { onClick: () => setTab("left"), style: { padding: "8px 20px", background: tab === "left" ? "#1A3A4A" : "#161B22", border: "1px solid " + (tab === "left" ? "#4FC3F7" : "#30363D"), borderRadius: 8, color: tab === "left" ? "#4FC3F7" : "#8B949E", cursor: "pointer", fontSize: 13, fontWeight: 600 } }, "Text Prompts"),
+      React.createElement("button", { onClick: () => setTab("right"), style: { padding: "8px 20px", background: tab === "right" ? "#1A3A4A" : "#161B22", border: "1px solid " + (tab === "right" ? "#3FB950" : "#30363D"), borderRadius: 8, color: tab === "right" ? "#3FB950" : "#8B949E", cursor: "pointer", fontSize: 13, fontWeight: 600 } }, "The Math")
+    ),
+    React.createElement("div", { style: { background: "#161B22", borderRadius: 10, padding: 16 } },
+      React.createElement("h4", { style: { color: tab === "left" ? "#4FC3F7" : "#3FB950", margin: "0 0 12px", fontSize: 15 } }, data.title),
+      data.items.map((item, i) =>
+        React.createElement("div", { key: i, style: { padding: "10px 0", borderBottom: i < data.items.length - 1 ? "1px solid #21262D" : "none" } },
+          (item.phase || item.step) && React.createElement("div", { style: { color: item.phase ? "#E6EDF3" : "#3FB950", fontWeight: 600, fontSize: 13, marginBottom: 4 } }, item.phase || item.step),
+          React.createElement("div", { style: { color: "#8B949E", fontSize: 12, lineHeight: 1.5 } }, item.prompts || item.detail)
+        )
+      ),
+      React.createElement("div", { style: { marginTop: 12, padding: 10, background: "#0D1117", borderRadius: 6 } },
+        React.createElement("p", { style: { color: "#6E7681", margin: 0, fontSize: 12, lineHeight: 1.5 } }, data.note)
+      )
+    )
+  );
+}
+
+function FormulaView({ content }) {
+  const [showEx, setShowEx] = React.useState(false);
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 16 } }, content.intro),
+    React.createElement("div", { style: { background: "#1C2333", padding: 14, borderRadius: 8, textAlign: "center", marginBottom: 20 } },
+      React.createElement("code", { style: { color: "#E6EDF3", fontSize: 16 } }, content.formula)
+    ),
+    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 } },
+      content.components.map((c, i) =>
+        React.createElement("div", { key: i, style: { padding: 14, background: "#161B22", borderRadius: 10, borderLeft: "3px solid " + c.color } },
+          React.createElement("div", { style: { color: c.color, fontWeight: 700, fontSize: 14, marginBottom: 4 } }, c.name),
+          React.createElement("div", { style: { color: "#C9D1D9", fontSize: 13, lineHeight: 1.5 } }, c.detail)
+        )
+      )
+    ),
+    React.createElement("button", { onClick: () => setShowEx(!showEx), style: { padding: "10px 20px", background: showEx ? "#F0883E22" : "#161B22", border: "1px solid " + (showEx ? "#F0883E" : "#30363D"), borderRadius: 8, color: showEx ? "#F0883E" : "#8B949E", cursor: "pointer", fontSize: 13, fontWeight: 600 } }, (showEx ? "Hide" : "Show") + " Cementite Example"),
+    showEx && React.createElement("div", { style: { marginTop: 12, background: "#161B22", borderRadius: 10, padding: 16 } },
+      React.createElement("h4", { style: { color: "#F0883E", margin: "0 0 12px", fontSize: 14 } }, content.example.title),
+      React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } },
+        React.createElement("thead", null,
+          React.createElement("tr", null, ["Result", "Sim", "Balance", "Mod", "Weight"].map(h =>
+            React.createElement("th", { key: h, style: { padding: "6px 10px", borderBottom: "1px solid #30363D", color: "#8B949E", textAlign: "left", fontWeight: 600 } }, h)
+          ))
+        ),
+        React.createElement("tbody", null,
+          content.example.rows.map((r, i) =>
+            React.createElement("tr", { key: i },
+              React.createElement("td", { style: { padding: "6px 10px", color: "#E6EDF3", borderBottom: "1px solid #21262D" } }, r.result),
+              React.createElement("td", { style: { padding: "6px 10px", color: "#4FC3F7", fontFamily: "monospace", borderBottom: "1px solid #21262D" } }, r.sim),
+              React.createElement("td", { style: { padding: "6px 10px", color: "#3FB950", fontFamily: "monospace", borderBottom: "1px solid #21262D" } }, r.balance),
+              React.createElement("td", { style: { padding: "6px 10px", color: "#F0883E", fontFamily: "monospace", borderBottom: "1px solid #21262D" } }, r.mod),
+              React.createElement("td", { style: { padding: "6px 10px", color: "#E6EDF3", fontWeight: 600, fontFamily: "monospace", borderBottom: "1px solid #21262D" } }, r.weight)
+            )
+          )
+        )
+      ),
+      React.createElement("p", { style: { color: "#F0883E", fontSize: 12, marginTop: 10, lineHeight: 1.5 } }, content.example.conclusion)
+    )
+  );
+}
+
+function EnsembleView({ content }) {
+  const [sc, setSc] = React.useState(0);
+  const s = content.scenarios[sc];
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 12 } }, content.intro),
+    React.createElement("div", { style: { background: "#1C2333", padding: 12, borderRadius: 8, textAlign: "center", marginBottom: 16 } },
+      React.createElement("code", { style: { color: "#E6EDF3", fontSize: 15 } }, content.formula)
+    ),
+    React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
+      content.scenarios.map((x, i) =>
+        React.createElement("button", { key: i, onClick: () => setSc(i), style: { flex: 1, padding: "10px 12px", background: sc === i ? (i === 0 ? "#F8514922" : "#3FB95022") : "#161B22", border: "1px solid " + (sc === i ? (i === 0 ? "#F85149" : "#3FB950") : "#30363D"), borderRadius: 8, color: sc === i ? (i === 0 ? "#F85149" : "#3FB950") : "#8B949E", cursor: "pointer", fontSize: 12, fontWeight: 600 } }, i === 0 ? "40/60 (Current)" : "70/30 (Proposed)")
+      )
+    ),
+    React.createElement("div", { style: { background: "#161B22", borderRadius: 10, padding: 16, border: "1px solid " + (sc === 0 ? "#F85149" : "#3FB950") + "44" } },
+      React.createElement("h4", { style: { color: sc === 0 ? "#F85149" : "#3FB950", margin: "0 0 4px", fontSize: 14 } }, s.title),
+      React.createElement("div", { style: { color: "#6E7681", fontSize: 11, marginBottom: 12 } }, s.weights),
+      s.rows.map((r, i) =>
+        React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 12, padding: "8px 0", borderBottom: i < s.rows.length - 1 ? "1px solid #21262D" : "none" } },
+          React.createElement("span", { style: { color: "#E6EDF3", fontWeight: 600, width: 100, fontSize: 13 } }, r.phase),
+          React.createElement("span", { style: { color: "#4FC3F7", fontFamily: "monospace", fontSize: 12, width: 50 } }, r.zs),
+          React.createElement("span", { style: { color: "#8B949E", fontSize: 10 } }, "+"),
+          React.createElement("span", { style: { color: "#3FB950", fontFamily: "monospace", fontSize: 12, width: 50 } }, r.vote),
+          React.createElement("span", { style: { color: "#8B949E", fontSize: 10 } }, "="),
+          React.createElement("span", { style: { color: r.winner ? (r.wrong ? "#F85149" : "#3FB950") : "#8B949E", fontFamily: "monospace", fontSize: 13, fontWeight: r.winner ? 700 : 400 } }, r.result + " " + (r.winner ? (r.wrong ? "\u2717" : "\u2713") : ""))
+        )
+      ),
+      React.createElement("p", { style: { color: "#6E7681", fontSize: 12, marginTop: 10, fontStyle: "italic" } }, s.note)
+    ),
+    React.createElement("div", { style: { marginTop: 16, padding: 14, background: "#1A3A4A", borderRadius: 10, border: "1px solid #4FC3F744" } },
+      React.createElement("p", { style: { color: "#C9D1D9", margin: 0, fontSize: 13, lineHeight: 1.6 } }, content.insight)
+    )
+  );
+}
+
+function ChecksView({ content }) {
+  const [active, setActive] = React.useState(null);
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 16 } }, content.intro),
+    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+      content.checks.map((c, i) =>
+        React.createElement("button", { key: i, onClick: () => setActive(active === i ? null : i), style: { padding: 14, background: "#161B22", border: "1px solid " + (active === i ? c.color : "#30363D"), borderRadius: 10, cursor: "pointer", textAlign: "left", borderLeft: "3px solid " + c.color } },
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+            React.createElement("span", { style: { color: c.color, fontWeight: 700, fontSize: 14 } }, c.name),
+            React.createElement("span", { style: { color: "#E6EDF3", fontFamily: "monospace", fontSize: 12, background: "#0D1117", padding: "2px 8px", borderRadius: 4 } }, c.threshold)
+          ),
+          React.createElement("div", { style: { color: "#E6EDF3", fontSize: 13, marginTop: 4 } }, c.question),
+          active === i && React.createElement("div", { style: { marginTop: 10, padding: 10, background: "#0D1117", borderRadius: 6 } },
+            React.createElement("p", { style: { color: "#8B949E", margin: 0, fontSize: 12, lineHeight: 1.5 } }, c.example)
+          )
+        )
+      )
+    )
+  );
+}
+
+function DataView({ content }) {
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 16 } }, content.intro),
+    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 } },
+      React.createElement("div", { style: { background: "#161B22", borderRadius: 10, padding: 16, borderTop: "3px solid #F85149" } },
+        React.createElement("h4", { style: { color: "#F85149", margin: "0 0 8px", fontSize: 14 } }, content.current.title),
+        React.createElement("div", { style: { color: "#E6EDF3", fontSize: 20, fontWeight: 700, marginBottom: 12 } }, content.current.total),
+        content.current.distribution.map((d, i) =>
+          React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 } },
+            React.createElement("span", { style: { color: "#8B949E", fontSize: 11, width: 80 } }, d.phase),
+            React.createElement("div", { style: { flex: 1, height: 8, background: "#21262D", borderRadius: 4, overflow: "hidden" } },
+              React.createElement("div", { style: { width: d.pct + "%", height: "100%", background: "#F85149", borderRadius: 4, opacity: 0.6 } })
+            ),
+            React.createElement("span", { style: { color: "#6E7681", fontSize: 10, width: 30, textAlign: "right" } }, d.count)
+          )
+        ),
+        React.createElement("div", { style: { marginTop: 10 } },
+          content.current.issues.map((iss, i) =>
+            React.createElement("div", { key: i, style: { color: "#F85149", fontSize: 11, padding: "2px 0", opacity: 0.8 } }, "\u2717 " + iss)
+          )
+        )
+      ),
+      React.createElement("div", { style: { background: "#161B22", borderRadius: 10, padding: 16, borderTop: "3px solid #3FB950" } },
+        React.createElement("h4", { style: { color: "#3FB950", margin: "0 0 8px", fontSize: 14 } }, content.needed.title),
+        content.needed.items.map((item, i) =>
+          React.createElement("div", { key: i, style: { color: "#3FB950", fontSize: 12, padding: "4px 0" } }, "\u2713 " + item)
+        )
+      )
+    ),
+    React.createElement("div", { style: { padding: 14, background: "#1A3A4A", borderRadius: 10, border: "1px solid #4FC3F744" } },
+      React.createElement("p", { style: { color: "#C9D1D9", margin: 0, fontSize: 13, lineHeight: 1.6 } }, content.why)
+    )
+  );
+}
+
+function DatasetsView({ content }) {
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 16 } }, content.intro),
+    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8 } },
+      content.datasets.map((d, i) =>
+        React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 12, padding: 12, background: "#161B22", borderRadius: 8 } },
+          React.createElement("div", { style: { flex: 1 } },
+            React.createElement("div", { style: { color: "#E6EDF3", fontWeight: 600, fontSize: 13 } }, d.name),
+            React.createElement("div", { style: { color: "#8B949E", fontSize: 11, marginTop: 2 } }, d.content)
+          ),
+          React.createElement("div", { style: { textAlign: "right" } },
+            React.createElement("div", { style: { color: "#4FC3F7", fontSize: 12, fontFamily: "monospace" } }, d.images),
+            React.createElement("div", { style: { color: "#6E7681", fontSize: 10 } }, d.source + " \u00B7 " + d.license)
+          )
+        )
+      )
+    ),
+    React.createElement("div", { style: { marginTop: 12, padding: 10, background: "#0D1117", borderRadius: 6 } },
+      React.createElement("p", { style: { color: "#6E7681", margin: 0, fontSize: 11, lineHeight: 1.5 } }, content.note)
+    )
+  );
+}
+
+function DecisionsView({ content }) {
+  const [active, setActive] = React.useState(0);
+  const opt = content.options[active];
+  const isChosen = opt.status === "chosen";
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 16 } }, content.intro),
+    React.createElement("div", { style: { display: "flex", gap: 8, marginBottom: 16 } },
+      content.options.map((o, i) => {
+        const ch = o.status === "chosen";
+        return React.createElement("button", { key: i, onClick: () => setActive(i), style: { flex: 1, padding: 10, background: active === i ? (ch ? "#3FB95022" : "#F8514922") : "#161B22", border: "1px solid " + (active === i ? (ch ? "#3FB950" : "#F85149") : "#30363D"), borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 600, color: active === i ? (ch ? "#3FB950" : "#F85149") : "#8B949E" } }, o.title + (ch ? " \u2713" : ""));
+      })
+    ),
+    React.createElement("div", { style: { background: "#161B22", borderRadius: 10, padding: 16, border: "1px solid " + (isChosen ? "#3FB950" : "#F85149") + "44" } },
+      React.createElement("span", { style: { padding: "3px 10px", borderRadius: 12, fontSize: 11, fontWeight: 700, background: isChosen ? "#3FB95033" : "#F8514933", color: isChosen ? "#3FB950" : "#F85149" } }, isChosen ? "CHOSEN" : "REJECTED"),
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 } },
+        React.createElement("div", null,
+          React.createElement("div", { style: { color: "#3FB950", fontSize: 12, fontWeight: 600, marginBottom: 6 } }, "Pros"),
+          opt.pros.map((p, i) => React.createElement("div", { key: i, style: { color: "#C9D1D9", fontSize: 12, padding: "3px 0", lineHeight: 1.4 } }, "+ " + p))
+        ),
+        React.createElement("div", null,
+          React.createElement("div", { style: { color: "#F85149", fontSize: 12, fontWeight: 600, marginBottom: 6 } }, "Cons"),
+          opt.cons.map((c, i) => React.createElement("div", { key: i, style: { color: "#C9D1D9", fontSize: 12, padding: "3px 0", lineHeight: 1.4 } }, "\u2212 " + c))
+        )
+      )
+    ),
+    React.createElement("div", { style: { marginTop: 16, padding: 14, background: "#1A3A4A", borderRadius: 10 } },
+      React.createElement("p", { style: { color: "#C9D1D9", margin: 0, fontSize: 13, lineHeight: 1.6 } }, content.conclusion)
+    )
+  );
+}
+
+function PhasesView({ content }) {
+  return React.createElement("div", null,
+    React.createElement("p", { style: { color: "#8B949E", fontSize: 14, marginBottom: 16 } }, content.intro),
+    React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 } },
+      content.phases.map((p, i) =>
+        React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#161B22", borderRadius: 8, borderLeft: "3px solid " + (p.inDB ? "#3FB950" : "#F85149") } },
+          React.createElement("div", { style: { flex: 1 } },
+            React.createElement("div", { style: { color: "#E6EDF3", fontSize: 12, fontWeight: 600 } }, p.name),
+            React.createElement("div", { style: { color: "#6E7681", fontSize: 10 } }, p.category)
+          ),
+          React.createElement("div", { style: { textAlign: "right" } },
+            React.createElement("div", { style: { color: "#8B949E", fontSize: 10, fontFamily: "monospace" } }, p.hardness),
+            React.createElement("div", { style: { color: p.inDB ? "#3FB950" : "#F85149", fontSize: 9 } }, p.inDB ? "In DB" : "Missing")
+          )
+        )
+      )
+    ),
+    React.createElement("div", { style: { marginTop: 12, display: "flex", gap: 16 } },
+      React.createElement("span", { style: { color: "#3FB950", fontSize: 11 } }, "\u25A0 In database (6)"),
+      React.createElement("span", { style: { color: "#F85149", fontSize: 11 } }, "\u25A0 Missing (10)")
+    )
+  );
+}
+
+function StackView({ content }) {
+  return React.createElement("div", null,
+    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 } },
+      content.tools.map((t, i) => {
+        const colors = { AI: "#4FC3F7", Backend: "#3FB950", Frontend: "#F0883E", Deploy: "#BC8CFF" };
+        return React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 12, padding: 12, background: "#161B22", borderRadius: 8 } },
+          React.createElement("span", { style: { padding: "3px 8px", borderRadius: 4, fontSize: 10, fontWeight: 600, background: colors[t.category] + "22", color: colors[t.category] } }, t.category),
+          React.createElement("span", { style: { color: "#E6EDF3", fontSize: 13, fontWeight: 600 } }, t.name),
+          React.createElement("span", { style: { color: "#8B949E", fontSize: 12, flex: 1, textAlign: "right" } }, t.role)
+        );
+      })
+    ),
+    React.createElement("h4", { style: { color: "#4FC3F7", margin: "0 0 10px", fontSize: 14 } }, "API Endpoints"),
+    React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 4 } },
+      content.endpoints.map((e, i) =>
+        React.createElement("div", { key: i, style: { display: "flex", alignItems: "center", gap: 10, padding: "6px 10px", background: "#161B22", borderRadius: 6 } },
+          React.createElement("span", { style: { padding: "2px 6px", borderRadius: 3, fontSize: 9, fontWeight: 700, fontFamily: "monospace", background: e.method === "POST" ? "#3FB95022" : "#4FC3F722", color: e.method === "POST" ? "#3FB950" : "#4FC3F7" } }, e.method),
+          React.createElement("span", { style: { color: "#E6EDF3", fontSize: 12, fontFamily: "monospace" } }, e.path),
+          React.createElement("span", { style: { color: "#6E7681", fontSize: 11, flex: 1, textAlign: "right" } }, e.desc)
+        )
+      )
+    ),
+    React.createElement("div", { style: { marginTop: 16, padding: 10, background: "#0D1117", borderRadius: 6 } },
+      React.createElement("p", { style: { color: "#6E7681", margin: 0, fontSize: 11 } }, content.note)
+    )
+  );
+}
+
+const renderers = { pipeline: PipelineView, concept: ConceptView, process: ProcessView, comparison: ComparisonView, formula: FormulaView, ensemble: EnsembleView, checks: ChecksView, data: DataView, datasets: DatasetsView, decisions: DecisionsView, phases: PhasesView, stack: StackView };
+
+function App() {
+  const [activeSection, setActiveSection] = React.useState(0);
+  const section = sections[activeSection];
+  const Renderer = renderers[section.content.type];
+  return React.createElement("div", { style: { minHeight: "100vh", background: "#0D1117", color: "#E6EDF3" } },
+    React.createElement("div", { style: { padding: "16px 20px", borderBottom: "1px solid #21262D", display: "flex", alignItems: "center", gap: 12 } },
+      React.createElement("span", { style: { fontSize: 20, fontWeight: 800, color: "#4FC3F7" } }, "\u03BCStruct"),
+      React.createElement("span", { style: { color: "#30363D" } }, "|"),
+      React.createElement("span", { style: { color: "#8B949E", fontSize: 13 } }, "Architecture Explorer"),
+      React.createElement("span", { style: { marginLeft: "auto", color: "#6E7681", fontSize: 11 } }, (activeSection + 1) + "/" + sections.length)
+    ),
+    React.createElement("div", { style: { display: "flex", minHeight: "calc(100vh - 53px)" } },
+      React.createElement("div", { style: { width: 220, borderRight: "1px solid #21262D", padding: "12px 0", overflowY: "auto", flexShrink: 0 } },
+        sections.map((s, i) =>
+          React.createElement("button", { key: i, onClick: () => setActiveSection(i), style: { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: activeSection === i ? "#161B22" : "transparent", border: "none", borderLeft: activeSection === i ? "2px solid #4FC3F7" : "2px solid transparent", cursor: "pointer", textAlign: "left" } },
+            React.createElement("span", { style: { fontSize: 16 } }, s.icon),
+            React.createElement("span", { style: { color: activeSection === i ? "#E6EDF3" : "#8B949E", fontSize: 12, fontWeight: activeSection === i ? 600 : 400 } }, s.title)
+          )
+        )
+      ),
+      React.createElement("div", { style: { flex: 1, padding: "24px 32px", overflowY: "auto", maxHeight: "calc(100vh - 53px)" } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 } },
+          React.createElement("span", { style: { fontSize: 28 } }, section.icon),
+          React.createElement("h2", { style: { margin: 0, fontSize: 24, fontWeight: 700 } }, section.title)
+        ),
+        React.createElement(Renderer, { content: section.content }),
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 32, paddingTop: 16, borderTop: "1px solid #21262D" } },
+          React.createElement("button", { disabled: activeSection === 0, onClick: () => setActiveSection(function(a) { return a - 1; }), style: { padding: "8px 20px", background: "#161B22", border: "1px solid #30363D", borderRadius: 8, color: activeSection === 0 ? "#30363D" : "#8B949E", cursor: activeSection === 0 ? "default" : "pointer", fontSize: 13 } }, "\u2190 Previous"),
+          React.createElement("button", { disabled: activeSection === sections.length - 1, onClick: () => setActiveSection(function(a) { return a + 1; }), style: { padding: "8px 20px", background: activeSection === sections.length - 1 ? "#161B22" : "#4FC3F722", border: "1px solid " + (activeSection === sections.length - 1 ? "#30363D" : "#4FC3F7"), borderRadius: 8, color: activeSection === sections.length - 1 ? "#30363D" : "#4FC3F7", cursor: activeSection === sections.length - 1 ? "default" : "pointer", fontSize: 13 } }, "Next \u2192")
+        )
+      )
+    )
+  );
+}
+
+ReactDOM.render(React.createElement(App), document.getElementById("root"));
+</script>
+</body>
+</html>
