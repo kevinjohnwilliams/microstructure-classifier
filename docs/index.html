@@ -5,14 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>μStruct Architecture Explorer</title>
 <script>/**
- * @license React
- * react.production.min.js
- *
- * Copyright (c) Facebook, Inc. and its affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- */
+
 (function(){'use strict';(function(c,x){"object"===typeof exports&&"undefined"!==typeof module?x(exports):"function"===typeof define&&define.amd?define(["exports"],x):(c=c||self,x(c.React={}))})(this,function(c){function x(a){if(null===a||"object"!==typeof a)return null;a=V&&a[V]||a["@@iterator"];return"function"===typeof a?a:null}function w(a,b,e){this.props=a;this.context=b;this.refs=W;this.updater=e||X}function Y(){}function K(a,b,e){this.props=a;this.context=b;this.refs=W;this.updater=e||X}function Z(a,b,
 e){var m,d={},c=null,h=null;if(null!=b)for(m in void 0!==b.ref&&(h=b.ref),void 0!==b.key&&(c=""+b.key),b)aa.call(b,m)&&!ba.hasOwnProperty(m)&&(d[m]=b[m]);var l=arguments.length-2;if(1===l)d.children=e;else if(1<l){for(var f=Array(l),k=0;k<l;k++)f[k]=arguments[k+2];d.children=f}if(a&&a.defaultProps)for(m in l=a.defaultProps,l)void 0===d[m]&&(d[m]=l[m]);return{$$typeof:y,type:a,key:c,ref:h,props:d,_owner:L.current}}function na(a,b){return{$$typeof:y,type:a.type,key:b,ref:a.ref,props:a.props,_owner:a._owner}}
 function M(a){return"object"===typeof a&&null!==a&&a.$$typeof===y}function oa(a){var b={"=":"=0",":":"=2"};return"$"+a.replace(/[=:]/g,function(a){return b[a]})}function N(a,b){return"object"===typeof a&&null!==a&&null!=a.key?oa(""+a.key):b.toString(36)}function B(a,b,e,m,d){var c=typeof a;if("undefined"===c||"boolean"===c)a=null;var h=!1;if(null===a)h=!0;else switch(c){case "string":case "number":h=!0;break;case "object":switch(a.$$typeof){case y:case pa:h=!0}}if(h)return h=a,d=d(h),a=""===m?"."+
@@ -37,17 +30,9 @@ c.useSyncExternalStore=function(a,b,c){return g.current.useSyncExternalStore(a,b
 })();
 </script>
 <script>/**
- * @license React
- * react-dom.production.min.js
- *
- * Copyright (c) Facebook, Inc. and its affiliates.
- *
- * This source code is licensed under the MIT license found in the
- * LICENSE file in the root directory of this source tree.
- */
+
 (function(){/*
- Modernizr 3.0.0pre (Custom Build) | MIT
-*/
+
 'use strict';(function(Q,mb){"object"===typeof exports&&"undefined"!==typeof module?mb(exports,require("react")):"function"===typeof define&&define.amd?define(["exports","react"],mb):(Q=Q||self,mb(Q.ReactDOM={},Q.React))})(this,function(Q,mb){function n(a){for(var b="https://reactjs.org/docs/error-decoder.html?invariant="+a,c=1;c<arguments.length;c++)b+="&args[]="+encodeURIComponent(arguments[c]);return"Minified React error #"+a+"; visit "+b+" for the full message or use the non-minified dev environment for full errors and additional helpful warnings."}
 function nb(a,b){Ab(a,b);Ab(a+"Capture",b)}function Ab(a,b){$b[a]=b;for(a=0;a<b.length;a++)cg.add(b[a])}function cj(a){if(Zd.call(dg,a))return!0;if(Zd.call(eg,a))return!1;if(dj.test(a))return dg[a]=!0;eg[a]=!0;return!1}function ej(a,b,c,d){if(null!==c&&0===c.type)return!1;switch(typeof b){case "function":case "symbol":return!0;case "boolean":if(d)return!1;if(null!==c)return!c.acceptsBooleans;a=a.toLowerCase().slice(0,5);return"data-"!==a&&"aria-"!==a;default:return!1}}function fj(a,b,c,d){if(null===
 b||"undefined"===typeof b||ej(a,b,c,d))return!0;if(d)return!1;if(null!==c)switch(c.type){case 3:return!b;case 4:return!1===b;case 5:return isNaN(b);case 6:return isNaN(b)||1>b}return!1}function Y(a,b,c,d,e,f,g){this.acceptsBooleans=2===b||3===b||4===b;this.attributeName=d;this.attributeNamespace=e;this.mustUseProperty=c;this.propertyName=a;this.type=b;this.sanitizeURL=f;this.removeEmptyString=g}function $d(a,b,c,d){var e=R.hasOwnProperty(b)?R[b]:null;if(null!==e?0!==e.type:d||!(2<b.length)||"o"!==
@@ -324,6 +309,7 @@ const sections = [
     id: "problem",
     title: "The Problem",
     icon: "\u{1F3AF}",
+    presenterNote: "Set the scene. Most people in the room will know metallography but not AI. Start with what they already understand: identifying phases is hard, it takes years of experience, and there is no good interactive tool for it. Emphasize that this is an education problem, not a research novelty. The goal is to make expert knowledge more accessible, not to replace experts.",
     content: {
       type: "concept",
       blocks: [
@@ -347,6 +333,7 @@ const sections = [
     id: "journey",
     title: "How We Got Here",
     icon: "\u{1F6E4}",
+    presenterNote: "This is the credibility slide. Show that you did the work: collected from 7+ sources, cleaned 5,000 images, normalized 28 label variants. The key moment is the discovery that zero-shot beats the database. That is not a failure, it is a diagnostic. It told us exactly where the bottleneck is and what needs to happen next.",
     content: {
       type: "concept",
       blocks: [
@@ -374,6 +361,7 @@ const sections = [
     id: "overview",
     title: "The Big Picture",
     icon: "\u{1F52C}",
+    presenterNote: "Walk through the six steps at a high level. Click each step to show the detail, but do not linger. The audience needs the mental map: image goes in, two parallel analyses happen, results merge, confidence is checked, report comes out. Everything after this section zooms into one of these steps.",
     content: {
       type: "pipeline",
       intro: "\u03BCStruct is an open-source AI tool that identifies steel microstructural phases from uploaded micrographs. Upload an image, get a phase ID with confidence scoring, educational content, and visually similar references.",
@@ -391,6 +379,7 @@ const sections = [
     id: "clip",
     title: "What is CLIP?",
     icon: "\u{1F9E0}",
+    presenterNote: "This is where you explain what the AI actually is. The shared space analogy is the anchor: images and text live in the same room, similar things are close together. If someone asks 'did you train a model?', the answer is no. CLIP was trained by OpenAI on 400 million images. We use it as-is, frozen. We wrote metallurgy-specific text prompts that let us query it for our domain.",
     content: {
       type: "concept",
       blocks: [
@@ -418,6 +407,7 @@ const sections = [
     id: "vit",
     title: "Vision Transformer",
     icon: "\u{1F441}",
+    presenterNote: "Only go deep here if the audience is technical. The interactive patch grid is a good visual. Key takeaway: the image gets chopped into 49 tiles, each tile gets a vector, then 12 layers of attention let every tile look at every other tile. The output is a single 512-number fingerprint. If time is short, click through the stages quickly and move on.",
     content: {
       type: "process",
       intro: "How CLIP converts your micrograph into a 512-number fingerprint",
@@ -434,6 +424,7 @@ const sections = [
     id: "zeroshot",
     title: "Zero-Shot Classification",
     icon: "\u{1F4DD}",
+    presenterNote: "This is the method that currently works best. Explain it simply: we wrote text descriptions of each phase, CLIP converts those to vectors, and we compare the image vector against all 16 text vectors. The closest match wins. No training data needed, which is why it covers all 16 phases even though the database only has 6. Show the Text Prompts tab first, then flip to The Math if the audience wants it.",
     content: {
       type: "comparison",
       intro: "Compare your image against text descriptions of every phase, no training data needed",
@@ -462,6 +453,7 @@ const sections = [
     id: "faiss",
     title: "FAISS Similarity Search",
     icon: "\u{1F50D}",
+    presenterNote: "This is the method ASM would directly improve. FAISS compares image-to-image with no text involved. It returns the 20 most visually similar images from the database and their labels. Right now those labels are unverified and 10 phases are completely missing. Better data in the index means better votes out. That is the entire ASM pitch in one sentence.",
     content: {
       type: "concept",
       blocks: [
@@ -476,6 +468,7 @@ const sections = [
     id: "voting",
     title: "Voting Classifier",
     icon: "\u{1F5F3}",
+    presenterNote: "The voting system is smart engineering around a data problem. Each of the 20 FAISS results votes for its label, but votes are weighted by both visual similarity and balance correction. The balance weight exists because ferrite has 843 images and martensite has 36. Without it, ferrite wins everything by volume. Show the cementite example to make it concrete. If someone asks why martensite gets a 5x boost, explain the 23:1 imbalance.",
     content: {
       type: "formula",
       intro: "Each of the top-20 FAISS results 'votes' for its phase label. But not all votes are equal.",
@@ -502,6 +495,7 @@ const sections = [
     id: "ensemble",
     title: "The Ensemble Problem",
     icon: "\u2696",
+    presenterNote: "The interactive slider is the star of this tab. Show the current 40/60 split, then slide to 70/30 to show the result flip to the correct answer. This makes the data quality argument visual and immediate. The 10 missing phases callout at the bottom is important: those phases literally cannot win in the current system because they have zero database votes. That is a structural gap, not a tuning problem.",
     content: {
       type: "ensemble",
       formula: "final = zero-shot \u00D7 W + voting \u00D7 (1 \u2212 W)",
@@ -538,6 +532,7 @@ const sections = [
     id: "confidence",
     title: "Confidence Signals",
     icon: "\u{1F6E1}",
+    presenterNote: "This is the safety net. Four independent checks catch different failure modes. The key message: when the system is not sure, it says so. It gives educational fallback content instead of a wrong answer. Click each check to show the example. The ambiguity gap check is the most interesting one for metallurgists because it catches real phase confusion cases like cementite vs. spheroidite.",
     content: {
       type: "checks",
       intro: "Four independent checks catch different failure modes. If any check triggers, the system says 'uncertain' and provides educational fallback content instead of a wrong answer.",
@@ -553,6 +548,7 @@ const sections = [
     id: "data",
     title: "The Data Reality",
     icon: "\u{1F4CA}",
+    presenterNote: "This is the honest assessment slide. Show the current database side (red) vs. what is needed side (green). The distribution bars make the imbalance visceral. Point out that 10 of 16 phases are completely missing. The ASM callout at the bottom connects directly to the solution. If someone challenges the data quality, you are agreeing with them. That is the whole point.",
     content: {
       type: "data",
       intro: "The AI architecture works. Classification accuracy is limited by reference data quality. Zero-shot CLIP is currently outperforming the voting classifier, a clear signal that the bottleneck is data, not algorithms.",
@@ -604,6 +600,7 @@ const sections = [
     id: "datasets",
     title: "Dataset Sources",
     icon: "\u{1F4C1}",
+    presenterNote: "Quick reference slide. Shows where the current images come from and that proper attribution is maintained. Mention that not all sources are steel-specific; the FAISS index is filtered to steel only. If someone asks about licensing, everything is CC or open. This also shows you have done the due diligence on provenance.",
     content: {
       type: "datasets",
       intro: "\u03BCStruct's reference library is built from openly available research datasets. Proper attribution is maintained for all sources.",
@@ -623,6 +620,7 @@ const sections = [
     id: "architecture",
     title: "Architecture Decisions",
     icon: "\u{1F3D7}",
+    presenterNote: "This shows you evaluated alternatives and made a deliberate choice. Option A (keep CLIP, fix data) was chosen because the model is not the problem. If someone asks 'why not fine-tune?' or 'why not train your own?', walk through Options B and C and explain the tradeoffs. The conclusion naturally leads into the next tab: we chose to fix the data, and ASM is how we do that.",
     content: {
       type: "decisions",
       intro: "We evaluated three paths forward and chose to keep CLIP frozen while improving everything around it.",
@@ -653,6 +651,7 @@ const sections = [
     id: "whyasm",
     title: "Why ASM Matters",
     icon: "\u{1F91D}",
+    presenterNote: "This is the ask. Everything before this built the case: the architecture works, the data is the bottleneck, we chose to fix data over changing models. Now deliver the pitch directly. ASM fixes the FAISS index. The encoder stays the same, the prompts stay the same, the code stays the same. Only the contents of the database change. And because the system is inference-only, ASM images are never redistributed or used for training. End on 'we built the engine, we need your fuel.'",
     content: {
       type: "concept",
       blocks: [
@@ -681,6 +680,7 @@ const sections = [
     id: "phases",
     title: "16 Steel Phases",
     icon: "\u{1F529}",
+    presenterNote: "Reference tab. Do not walk through all 16 during a presentation. Use it to answer specific questions: 'what about bainite?' Click it, show the description, hardness range, and look-alike warnings. The green vs. red badges instantly show which phases are in the database and which are missing. Good for showing domain depth if the audience is metallurgists.",
     content: {
       type: "phases",
       intro: "\u03BCStruct's Phase Guide covers 16 steel microstructural phases with educational content for each.",
@@ -708,6 +708,7 @@ const sections = [
     id: "stack",
     title: "Tech Stack & API",
     icon: "\u2699",
+    presenterNote: "Wrap-up slide. Covers the technical stack, API endpoints, and security posture. The security section is the most important part for an ASM audience: no data retention, no model training, no image redistribution, no external API calls, fully self-hostable. Expand the security panel and walk through each point. If IT or legal concerns come up, this is your answer sheet.",
     content: {
       type: "stack",
       tools: [
@@ -1323,6 +1324,7 @@ const renderers = { pipeline: PipelineView, concept: ConceptView, process: Proce
 
 function App() {
   const [activeSection, setActiveSection] = React.useState(0);
+  const [showNotes, setShowNotes] = React.useState(true);
   const section = sections[activeSection];
   const Renderer = renderers[section.content.type];
   return React.createElement("div", { style: { minHeight: "100vh", background: "#0D1117", color: "#E6EDF3" } },
@@ -1330,6 +1332,7 @@ function App() {
       React.createElement("span", { style: { fontSize: 20, fontWeight: 800, color: "#4FC3F7" } }, "\u03BCStruct"),
       React.createElement("span", { style: { color: "#30363D" } }, "|"),
       React.createElement("span", { style: { color: "#8B949E", fontSize: 13 } }, "Architecture Explorer"),
+      React.createElement("button", { onClick: () => setShowNotes(!showNotes), style: { marginLeft: 12, padding: "3px 10px", background: showNotes ? "#F0C00022" : "#161B22", border: "1px solid " + (showNotes ? "#F0C000" : "#30363D"), borderRadius: 6, color: showNotes ? "#F0C000" : "#6E7681", cursor: "pointer", fontSize: 10, fontWeight: 600 } }, showNotes ? "\u{1F3A4} Notes ON" : "\u{1F3A4} Notes OFF"),
       React.createElement("span", { style: { marginLeft: "auto", color: "#6E7681", fontSize: 11 } }, (activeSection + 1) + "/" + sections.length)
     ),
     React.createElement("div", { style: { display: "flex", minHeight: "calc(100vh - 53px)" } },
@@ -1345,6 +1348,13 @@ function App() {
         React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 12, marginBottom: 20 } },
           React.createElement("span", { style: { fontSize: 28 } }, section.icon),
           React.createElement("h2", { style: { margin: 0, fontSize: 24, fontWeight: 700 } }, section.title)
+        ),
+        showNotes && section.presenterNote && React.createElement("div", { style: { marginBottom: 20, padding: "12px 16px", background: "#1C1500", borderRadius: 8, border: "1px solid #F0C00033", borderLeft: "3px solid #F0C000" } },
+          React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 6 } },
+            React.createElement("span", { style: { fontSize: 12 } }, "\u{1F3A4}"),
+            React.createElement("span", { style: { color: "#F0C000", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" } }, "Presenter Notes")
+          ),
+          React.createElement("p", { style: { color: "#D4C07A", margin: 0, fontSize: 13, lineHeight: 1.6, fontStyle: "italic" } }, section.presenterNote)
         ),
         React.createElement(Renderer, { content: section.content }),
         React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginTop: 32, paddingTop: 16, borderTop: "1px solid #21262D" } },
